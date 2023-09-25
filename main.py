@@ -1,8 +1,8 @@
 import telebot
-import Game
+from Game import Game
 
 bot = telebot.TeleBot('6429777300:AAFHTUyXrKZRaElGopWkOMVumLQLGx1tvhk')
-game = Game.Game(3)
+game = Game(3)
 
 @bot.message_handler(commands=['start'])
 def main(message):
