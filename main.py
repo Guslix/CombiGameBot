@@ -1,10 +1,11 @@
 import telebot
 import time
+from telebot import types
 from Game import Game
 
 bot = telebot.TeleBot('6429777300:AAFHTUyXrKZRaElGopWkOMVumLQLGx1tvhk')
-game = Game(3)
-wrong_enters = 0
+game = Game(3, 12)
+enters_k = 0
 
 @bot.message_handler(commands=['start'])
 def main(message):
@@ -12,6 +13,13 @@ def main(message):
                               'Во время раунда игроки по очереди бьют карту ведущего. '
                               'Чтобы набрать хорошую комбинацию, вам нужно выиграть как можно больше карт '
                               'и набрать большую сумму битых карт ведущего.\n'
+                              'Как побить карту ведущего:\n'
+                              ' - Картой той же масти, которая больше весит.\n'
+                              ' - Туз - единица, то есть самая слабая карта, но может побить только короля.\n'
+                              ' - Если закончилась эта масть, можно выложить любую карту. Карта другой масти всё время '
+                              'проигрывает карте ведущего, если это не козырь.\n'
+                              ' - В этой игре есть козыри. У каждого игрока своя козырная масть. Козырь может бить любую карту другой масти.\n'
+                              ' - Нельзя выкладывать карту другой масти, если у вас остались карты масти как у ведущего.\n\n'
                               'Есть 4 уровня комбинаций:\n'
                               '1. Идеал - Выиграно от 8 карт, сумма битых карт не меньше 56, первая и последняя карты выиграны\n'
                               '2. Кандидат - Тоже от 8 карт и сумма не меньше 56, но проиграна первая или последняя карта\n'
@@ -37,34 +45,45 @@ def help(message):
 def newGame(message):
     bot.send_message(message.chat.id, 'Поехали!')
     game.start()
-    bot.send_message(message.chat.id, game.lap_info())
-    bot.send_message(message.chat.id, game.lap_player())
+    game_lap(message)
 
-@bot.message_handler()
-def enter_card(message):
-    card = game.pick(message.text)
-    global wrong_enters
-    wrong_enters += 1
-    if(card >= 52):
-        bot.send_message(message.chat.id, f'У вас ещё остались карты масти {chr(97 + card % 4)}')
-    elif(card == -1):
-        bot.send_message(message.chat.id, 'У вас нет такой карты')
-    elif(card == -2):
-        bot.send_message(message.chat.id, 'Масть карты - строчная буква a, b, c, d; '
-                                          'номинал карты - число от 2 до 10 или большая буква A, J, Q, K')
+@bot.callback_query_handler(func=lambda callback: True)
+def callback_message(callback):
+    global enters_k
+    enters_k += 1
+    card_id = int(callback.data)
+    if game.playable(card_id):
+        pick_card(callback.message, card_id)
     else:
-        play_log = game.play(card)
-        for i in range(wrong_enters * 2):
-            bot.delete_message(message.chat.id, message.message_id - i)
-        wrong_enters = 0
-        bot.send_message(message.chat.id, play_log)
-        time.sleep(5)
-        if game.lap == 12:
-            bot.send_message(message.chat.id, game.result())
-            bot.send_message(message.chat.id, 'Начать новую игру: /new')
-        else:
-            if game.cur_pl == 0:
-                bot.send_message(message.chat.id, game.lap_info())
-            bot.send_message(message.chat.id, game.lap_player())
+        bot.send_message(callback.message.chat.id, f'У вас ещё остались карты масти {game.dealer.to_string()[0]}')
+
+def pick_card(message, card_id):
+    play_log = game.play(card_id)
+    print(play_log)
+    bot.send_message(message.chat.id, play_log)
+    global enters_k
+    for i in range(enters_k):
+        bot.delete_message(message.chat.id, message.message_id + i)
+    enters_k = 0
+    time.sleep(2)
+    game_lap(message)
+
+def game_lap(message):
+    if game.is_over:
+        bot.send_message(message.chat.id, game.result())
+        bot.send_message(message.chat.id, 'Начать новую игру: /new')
+    else:
+        if game.cur == 0:
+            bot.send_message(message.chat.id, game.lap_info())
+        bot.send_message(message.chat.id, game.lap_player(), reply_markup=markup_hand())
+
+def markup_hand():
+    cards = game.hand()
+    markup = types.InlineKeyboardMarkup()
+    for i in range(4):
+        if len(cards[i]) > 0:
+            buttons = [types.InlineKeyboardButton(c.to_string(), callback_data=str(c.id)) for c in cards[i]]
+            markup.row(*buttons)
+    return markup
 
 bot.infinity_polling()
